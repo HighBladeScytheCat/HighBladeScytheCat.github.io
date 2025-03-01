@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Art to Minecraft Blocks</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            border: 1px solid #000;
+            margin: 20px 0;
+            image-rendering: pixelated;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 25px;
+        }
+    </style>
+</head>
+<body>
+    <input type="file" id="fileInput" accept="image/png, image/jpeg">
+    <canvas id="pixelCanvas" width="332" height="332"></canvas>
+    <button onclick="convertToMinecraftBlocks()">Turn it into Minecraft Blocks</button>
+
+    <script>
+        const colorPalette = {
+            "#000000": "minecraft_block_black.png",
+            "#FFFFFF": "minecraft_block_white.png",
+            "#0000FF": "minecraft_block_blue.png",
+            "#00FF00": "minecraft_block_green.png",
+            "#FF0000": "minecraft_block_red.png",
+            "#808080": "minecraft_block_gray.png",
+            "#A9A9A9": "minecraft_block_dark_gray.png",
+            "#D3D3D3": "minecraft_block_light_gray.png",
+        };
+
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, 83, 83);
+                    const imageData = ctx.getImageData(0, 0, 83, 83);
+                    const data = imageData.data;
+                    for (let y = 0; y < 83; y++) {
+                        for (let x = 0; x < 83; x++) {
+                            const index = (y * 83 + x) * 4;
+                            const r = data[index];
+                            const g = data[index + 1];
+                            const b = data[index + 2];
+                            const hexColor = rgbToHex(r, g, b);
+                            const closestColor = findClosestColor(hexColor);
+                            ctx.fillStyle = closestColor;
+                            ctx.fillRect(x * 4, y * 4, 4, 4);
+                        }
+                    }
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        function rgbToHex(r, g, b) {
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+        }
+
+        function findClosestColor(hexColor) {
+            const colors = Object.keys(colorPalette);
+            let closestColor = colors[0];
+            let minDistance = getDistance(hexColor, closestColor);
+            for (const color of colors) {
+                const distance = getDistance(hexColor, color);
+                if (distance < minDistance) {
+                    closestColor = color;
+                    minDistance = distance;
+                }
+            }
+            return closestColor;
+        }
+
+        function getDistance(color1, color2) {
+            const [r1, g1, b1] = hexToRgb(color1);
+            const [r2, g2, b2] = hexToRgb(color2);
+            return Math.sqrt(Math.pow(r1 - r2, 2) + Math.pow(g1 - g2, 2) + Math.pow(b1 - b2, 2));
+        }
+
+        function hexToRgb(hex) {
+            const bigint = parseInt(hex.slice(1), 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return [r, g, b];
+        }
+
+        function convertToMinecraftBlocks() {
+            const imageData = ctx.getImageData(0, 0, 332, 332);
+            const data = imageData.data;
+            for (let y = 0; y < 83; y++) {
+                for (let x = 0; x < 83; x++) {
+                    const index = (y * 83 + x) * 4;
+                    const r = data[index];
+                    const g = data[index + 1];
+                    const b = data[index + 2];
+                    const hexColor = rgbToHex(r, g, b);
+                    const closestColor = findClosestColor(hexColor);
+                    if (colorPalette[closestColor]) {
+                        const img = new Image();
+                        img.src = colorPalette[closestColor];
+                        img.onload = function() {
+                            ctx.drawImage(img, x * 4, y * 4, 4, 4);
+                        };
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
