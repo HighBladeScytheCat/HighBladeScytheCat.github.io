@@ -15,6 +15,7 @@
             background-size: cover;
             min-height: 100vh;
             margin: 0;
+            position: relative; /* For cursor-following box */
         }
         h1 {
             color: black;
@@ -24,11 +25,23 @@
             margin-top: 20px;
             margin-bottom: 20px;
         }
+        #canvas-container {
+            position: relative; /* Needed for zoom */
+            overflow: hidden;  /* Hides the overflowing canvas when zoomed in */
+            width: 664px;       /* Keep the container at the original canvas size */
+            height: 664px;      /* Keep the container at the original canvas size */
+        }
+
         canvas {
             border: 1px solid #000;
-            margin: 20px 0;
             image-rendering: pixelated;
+            cursor: crosshair; /* Indicate interaction */
+            position: absolute; /* Important for zoom */
+            top: 0;
+            left: 0;
+            transition: transform 0.3s ease; /* Smooth zoom transition */
         }
+
         button, .custom-file-input {
             background-color: #4CAF50;
             border: none;
@@ -53,6 +66,30 @@
             opacity: 0;
             cursor: pointer;
         }
+        #cursorBlockInfo {
+            position: fixed; /* Changed to fixed */
+            background-color: rgba(255, 255, 255, 0.8); /* Semi-transparent white */
+            border: 1px solid #ccc;
+            padding: 5px;
+            z-index: 1000; /* Ensure it's on top */
+            display: none; /* Initially hidden */
+            pointer-events: none; /* So it doesn't interfere with canvas clicks */
+            border-radius: 5px; /* Rounded corners */
+            text-align: center;
+        }
+
+        #cursorBlockInfo img {
+            max-width: 80px;
+            max-height: 60px;
+            display: block;
+            margin: 5px auto;
+        }
+
+        #cursorBlockInfo p {
+            margin: 0;
+            font-size: 12px;
+        }
+
     </style>
 </head>
 <body>
@@ -61,38 +98,60 @@
         Upload File
         <input type="file" id="fileInput" accept="image/png, image/jpeg">
     </label>
-    <canvas id="pixelCanvas" width="664" height="664"></canvas> <!-- Increased canvas size -->
-    <button id="convertButton">Turn it into Minecraft Blocks</button>
+
+    <div id="canvas-container">
+        <canvas id="pixelCanvas" width="664" height="664"></canvas>
+    </div>
+
+    <button id="toggleButton">Toggle Minecraft Blocks</button>
+
+    <div id="cursorBlockInfo">
+        <p id="cursorBlockName"></p>
+        <img id="cursorBlockTexture" src="" alt="Block Texture">
+    </div>
 
     <script>
         const colorPalette = {
-            "#f9fffe": "white-concrete.png",
-            "#e5e5e5": "iron-block.png",
-            "#c1cdcd": "safe.png",
-            "#b3b3b3": "gambling-block.png",
-            "#9d9d97": "light-block-concrete.png",
-            "#7f7f7f": "stone-bricks.png",
-            "#4d4d4d": "hopper.png",
-            "#262626": "polished-blackstone.png",
-            "#1a1a1a": "polished-blackstone-bricks.png",
-            "#000000": "obsidian.png",
-            // ... add more colors
+            "#f9fffe": { name: "White Concrete", url: "white-concrete.png" },
+            "#e5e5e5": { name: "Iron Blocks", url: "iron-block.png" },
+            "#c1cdcd": { name: "Safe", url: "safe.png" },
+            "#b3b3b3": { name: "Gambling Block", url: "gambling-block.png" },
+            "#9d9d97": { name: "Light Gray Concrete", url: ""light-block-concrete.png" },
+            "#7f7f7f": { name: "Stone Bricks", url: "stone-bricks.png" },
+            "#4d4d4d": { name: "Hopper", url: "hopper.png" },
+            "#262626": { name: "Polished Blackstone", url: "polished-blackstone.png" },
+            "#1a1a1a": { name: "Polished Blackstone Bricks", url: "polished-blackstone-bricks.png" },
+            "#000000": { name: "Obsidian", url: "obsidian.png" },
         };
 
         const canvas = document.getElementById('pixelCanvas');
         const ctx = canvas.getContext('2d');
         let originalImageData;
+        let pixelatedImageData; // Store the pixelated color data
         const blockImages = {};
+        const blockSize = 8; // Adjusted block size
+        const numBlocks = 83; // Number of blocks in each dimension
+        const cursorBlockInfo = document.getElementById('cursorBlockInfo');
+        const cursorBlockName = document.getElementById('cursorBlockName');
+        const cursorBlockTexture = document.getElementById('cursorBlockTexture');
+        let isZoomedIn = false;
+        let zoomFactor = 1; // Start with no zoom
+        const zoomStep = 4;  // How much to zoom in
+        let showingBlocks = false; // Flag to track whether blocks or colors are shown
+
 
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const reader = new FileReader();
             reader.onload = function(event) {
                 const img = new Image();
                 img.onload = function() {
+                    resetZoom(); // Reset zoom when a new image is loaded
                     ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height); // Draw the full image
                     originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height); // Store the image data
                     convertToPixelArt(); // Convert to pixel art
+                    showingBlocks = false; // Reset the toggle state
+                    document.getElementById('toggleButton').textContent = "Toggle Minecraft Blocks";
                 };
                 img.onerror = function() {
                     alert('Failed to load the image. Please try again with a different image.');
@@ -109,19 +168,56 @@
             const imageData = originalImageData;
             const data = imageData.data;
 
-            for (let y = 0; y < 83; y++) {
-                for (let x = 0; x < 83; x++) {
-                    const index = ((Math.floor(y * imageData.height / 83) * imageData.width) + Math.floor(x * imageData.width / 83)) * 4;
-                    const r = data[index];
-                    const g = data[index + 1];
-                    const b = data[index + 2];
-                    const hexColor = rgbToHex(r, g, b);
+            // Create a new ImageData object for pixelated data
+            pixelatedImageData = ctx.createImageData(canvas.width, canvas.height);
+            const pixelatedData = pixelatedImageData.data;
+
+
+            for (let y = 0; y < numBlocks; y++) {
+                for (let x = 0; x < numBlocks; x++) {
+                    // Calculate the average color of the original image within the block
+                    let rSum = 0, gSum = 0, bSum = 0;
+                    let count = 0;
+
+                    for (let py = Math.floor(y * (canvas.height / numBlocks)); py < Math.floor((y + 1) * (canvas.height / numBlocks)); py++) {
+                        for (let px = Math.floor(x * (canvas.width / numBlocks)); px < Math.floor((x + 1) * (canvas.width / numBlocks)); px++) {
+                            const index = (py * canvas.width + px) * 4;
+                            rSum += data[index];
+                            gSum += data[index + 1];
+                            bSum += data[index + 2];
+                            count++;
+                        }
+                    }
+
+                    const rAvg = Math.round(rSum / count);
+                    const gAvg = Math.round(gSum / count);
+                    const bAvg = Math.round(bSum / count);
+
+                    const hexColor = rgbToHex(rAvg, gAvg, bAvg);
                     const closestColor = findClosestColor(hexColor);
+                    const [r2, g2, b2] = hexToRgb(closestColor);
+
+                    // Fill the block with the closest color
                     ctx.fillStyle = closestColor;
-                    ctx.fillRect(x * 8, y * 8, 8, 8); // Adjusted square size
+                    ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
+
+                    // Store the color in the pixelatedImageData for each pixel in the block
+                    for (let py = Math.floor(y * (canvas.height / numBlocks)); py < Math.floor((y + 1) * (canvas.height / numBlocks)); py++) {
+                        for (let px = Math.floor(x * (canvas.width / numBlocks)); px < Math.floor((x + 1) * (canvas.width / numBlocks)); px++) {
+                            const pixelIndex = (py * canvas.width + px) * 4;
+                            pixelatedData[pixelIndex] = r2;
+                            pixelatedData[pixelIndex + 1] = g2;
+                            pixelatedData[pixelIndex + 2] = b2;
+                            pixelatedData[pixelIndex + 3] = 255;
+                        }
+                    }
+
                 }
             }
-            originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height); // Store the pixelated data
+
+            // Put the pixelated image data on the canvas (optional, but ensures canvas matches data)
+            ctx.putImageData(pixelatedImageData, 0, 0);
+            originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         }
 
         function rgbToHex(r, g, b) {
@@ -169,7 +265,7 @@
                         callback();
                     }
                 };
-                img.src = colorPalette[color];
+                img.src = colorPalette[color].url;
                 img.onerror = function() {
                     console.error(`Failed to load image for color ${color}`);
                     loadedCount++;
@@ -180,41 +276,186 @@
             });
         }
 
-        const blockSize = 8; // Adjusted block size
+
+        function drawPixelatedColors() {
+            if (!pixelatedImageData) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.putImageData(pixelatedImageData, 0, 0);
+        }
 
         function convertToMinecraftBlocks() {
-            if (!originalImageData) {
-                alert('Please upload an image and click "Turn it into Minecraft Blocks" again.');
+            if (!pixelatedImageData) {
+                alert('Please upload an image and click "Toggle Minecraft Blocks" again.');
                 return;
             }
-            const imageData = originalImageData; // Use the stored pixelated image data
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const imageData = pixelatedImageData;
             const data = imageData.data;
 
-            for (let y = 0; y < 83; y++) {
-                for (let x = 0; x < 83; x++) {
-                    const index = ((Math.floor(y * imageData.height / 83) * imageData.width) + Math.floor(x * imageData.width / 83)) * 4;
-                    const r = data[index];
-                    const g = data[index + 1];
-                    const b = data[index + 2];
-                    const hexColor = rgbToHex(r, g, b);
+
+            for (let y = 0; y < numBlocks; y++) {
+                for (let x = 0; x < numBlocks; x++) {
+                   // Calculate the top-left corner of the block
+                    const startX = x * blockSize;
+                    const startY = y * blockSize;
+
+                    // Determine the dominant color of the block
+                    let rSum = 0, gSum = 0, bSum = 0;
+                    let count = 0;
+
+                    for (let py = startY; py < startY + blockSize; py++) {
+                        for (let px = startX; px < startX + blockSize; px++) {
+                            const index = (py * canvas.width + px) * 4;
+                            rSum += data[index];
+                            gSum += data[index + 1];
+                            bSum += data[index + 2];
+                            count++;
+                        }
+                    }
+
+                    const rAvg = Math.round(rSum / count);
+                    const gAvg = Math.round(gSum / count);
+                    const bAvg = Math.round(bSum / count);
+
+                    const hexColor = rgbToHex(rAvg, gAvg, bAvg);
                     const closestColor = findClosestColor(hexColor);
 
                     if (closestColor in blockImages) {
                         ctx.drawImage(blockImages[closestColor], x * blockSize, y * blockSize, blockSize, blockSize); // Resize the image to fit the block size
                     } else {
                         console.warn(`No texture found for (${hexColor})`);
+                         ctx.fillStyle = hexColor; // Fallback to color if texture missing
+                         ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
                     }
                 }
             }
+
+            originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         }
 
-        document.getElementById('convertButton').addEventListener('click', function() {
-            loadBlockImages(convertToMinecraftBlocks);
+
+
+        document.getElementById('toggleButton').addEventListener('click', function() {
+            if (showingBlocks) {
+                // If currently showing blocks, switch back to colors
+                drawPixelatedColors();
+                document.getElementById('toggleButton').textContent = "Toggle Minecraft Blocks";
+            } else {
+                // If currently showing colors, switch to blocks
+                loadBlockImages(convertToMinecraftBlocks);
+                document.getElementById('toggleButton').textContent = "Toggle Pixel Colors";
+            }
+            showingBlocks = !showingBlocks;
+        });
+
+       // Mouse hover event listener
+        canvas.addEventListener('mousemove', function(event) {
+            if (!pixelatedImageData) return; // Do nothing if no image is loaded
+
+            const rect = canvas.getBoundingClientRect();
+            let mouseX = event.clientX - rect.left;
+            let mouseY = event.clientY - rect.top;
+
+             // Adjust mouse coordinates for zoom
+            mouseX /= zoomFactor;
+            mouseY /= zoomFactor;
+
+            const x = Math.floor(mouseX / blockSize);
+            const y = Math.floor(mouseY / blockSize);
+
+            if (x >= 0 && x < numBlocks && y >= 0 && y < numBlocks) {
+
+                 // Calculate the top-left corner of the block
+                const startX = x * blockSize;
+                const startY = y * blockSize;
+                const index = (startY * canvas.width + startX) * 4;
+                const r = pixelatedImageData.data[index];
+                const g = pixelatedImageData.data[index + 1];
+                const b = pixelatedImageData.data[index + 2];
+
+                const hexColor = rgbToHex(r, g, b);
+                const closestColor = findClosestColor(hexColor);
+
+                if (colorPalette[closestColor]) {
+                    cursorBlockName.textContent = colorPalette[closestColor].name;
+                    cursorBlockTexture.src = colorPalette[closestColor].url;
+                    cursorBlockInfo.style.display = 'block';
+
+                     // Position the block info box slightly to the top-right of the cursor
+                    cursorBlockInfo.style.left = (event.clientX + 10) + 'px';
+                    cursorBlockInfo.style.top = (event.clientY - 10) + 'px';
+
+                    // Adjust the size of the cursor box to fit the larger zoom factor
+                    cursorBlockTexture.style.maxWidth = (80 * zoomFactor) + "px";
+                    cursorBlockTexture.style.maxHeight = (60 * zoomFactor) + "px";
+
+                } else {
+                    cursorBlockName.textContent = 'Unknown Block';
+                    cursorBlockTexture.src = ''; // Clear the texture
+                    cursorBlockInfo.style.display = 'block';
+
+                     // Position the block info box slightly to the top-right of the cursor
+                    cursorBlockInfo.style.left = (event.clientX + 10) + 'px';
+                    cursorBlockInfo.style.top = (event.clientY - 10) + 'px';
+
+                    // Adjust the size of the cursor box to fit the larger zoom factor
+                    cursorBlockTexture.style.maxWidth = (80 * zoomFactor) + "px";
+                    cursorBlockTexture.style.maxHeight = (60 * zoomFactor) + "px";
+                }
+
+            } else {
+                cursorBlockInfo.style.display = 'none'; // Hide when not over a valid block
+            }
+        });
+
+        // Mouse leave event listener (when mouse leaves the canvas)
+        canvas.addEventListener('mouseleave', function() {
+            cursorBlockInfo.style.display = 'none';
+        });
+
+        // Function to handle zooming
+        function handleDoubleClick(event) {
+            event.preventDefault(); // Prevent default double-click behavior
+
+            if (!pixelatedImageData) return;
+
+            const rect = canvas.getBoundingClientRect();
+            let mouseX = event.clientX - rect.left;
+            let mouseY = event.clientY - rect.top;
+
+            if (!isZoomedIn) {
+                zoomIn(mouseX, mouseY);
+            } else {
+                resetZoom();
+            }
+
+            isZoomedIn = !isZoomedIn;
+        }
+
+        function zoomIn(mouseX, mouseY) {
+            zoomFactor = zoomStep; // Zoom in by the defined zoom step
+            canvas.style.transformOrigin = `${mouseX}px ${mouseY}px`;
+            canvas.style.transform = `scale(${zoomFactor})`;
+        }
+
+        function resetZoom() {
+            zoomFactor = 1;
+            canvas.style.transformOrigin = `0 0`;
+            canvas.style.transform = `scale(${zoomFactor})`;
+        }
+
+        // Double click event listener for zoom
+        canvas.addEventListener('dblclick', handleDoubleClick);
+
+        //Ensure cursor box is on screen when scrolling
+        window.addEventListener('scroll', function() {
+           //The box already follows the cursor, so no extra code is needed to follow the scrolling
         });
 
     </script>
 </body>
 </html>
-
 
 
