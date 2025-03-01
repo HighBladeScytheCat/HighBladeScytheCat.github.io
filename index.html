@@ -122,6 +122,7 @@
             "#262626": { name: "Polished Blackstone", url: "polished-blackstone.png" },
             "#1a1a1a": { name: "Polished Blackstone Bricks", url: "polished-blackstone-bricks.png" },
             "#000000": { name: "Obsidian", url: "obsidian.png" },
+
         };
 
         const canvas = document.getElementById('pixelCanvas');
@@ -252,30 +253,6 @@
             return [r, g, b];
         }
 
-        function loadBlockImages(callback) {
-            const colorKeys = Object.keys(colorPalette);
-            let loadedCount = 0;
-
-            colorKeys.forEach(color => {
-                const img = new Image();
-                img.onload = function() {
-                    blockImages[color] = img;
-                    loadedCount++;
-                    if (loadedCount === colorKeys.length) {
-                        callback();
-                    }
-                };
-                img.src = colorPalette[color].url;
-                img.onerror = function() {
-                    console.error(`Failed to load image for color ${color}`);
-                    loadedCount++;
-                    if (loadedCount === colorKeys.length) {
-                        callback();
-                    }
-                };
-            });
-        }
-
 
         function drawPixelatedColors() {
             if (!pixelatedImageData) return;
@@ -322,8 +299,13 @@
                     const hexColor = rgbToHex(rAvg, gAvg, bAvg);
                     const closestColor = findClosestColor(hexColor);
 
-                    if (closestColor in blockImages) {
-                        ctx.drawImage(blockImages[closestColor], x * blockSize, y * blockSize, blockSize, blockSize); // Resize the image to fit the block size
+                    if (colorPalette[closestColor]) {
+                        const img = new Image();
+                        img.onload = function() {
+                            ctx.drawImage(img, x * blockSize, y * blockSize, blockSize, blockSize); // Resize the image to fit the block size
+                        };
+                        img.src = colorPalette[closestColor].url;
+
                     } else {
                         console.warn(`No texture found for (${hexColor})`);
                          ctx.fillStyle = hexColor; // Fallback to color if texture missing
@@ -344,7 +326,7 @@
                 document.getElementById('toggleButton').textContent = "Toggle Minecraft Blocks";
             } else {
                 // If currently showing colors, switch to blocks
-                loadBlockImages(convertToMinecraftBlocks);
+                convertToMinecraftBlocks();
                 document.getElementById('toggleButton').textContent = "Toggle Pixel Colors";
             }
             showingBlocks = !showingBlocks;
@@ -457,5 +439,3 @@
     </script>
 </body>
 </html>
-
-
