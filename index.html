@@ -23,7 +23,7 @@
             text-align: center;
             text-shadow: 2px 2px #FFFFFF, -2px -2px #FFFFFF, 2px -2px #FFFFFF;
             margin-top: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 10px; /* Reduced margin below title */
         }
         #canvas-container {
             position: relative; /* Needed for zoom */
@@ -40,6 +40,13 @@
             top: 0;
             left: 0;
             transition: transform 0.3s ease; /* Smooth zoom transition */
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center; /* Align buttons horizontally */
+            align-items: center;
+            margin-bottom: 10px; /* Spacing below the buttons */
         }
 
         button, .custom-file-input {
@@ -90,20 +97,30 @@
             font-size: 12px;
         }
 
+        .description {
+            font-size: 14px; /* Adjust as needed */
+            margin-top: 5px; /* Spacing below the title */
+            text-align: center;
+        }
+
     </style>
 </head>
 <body>
     <h1>Pixel Art Generator for mine-craft.io</h1>
-    <label class="custom-file-input">
-        Upload File
-        <input type="file" id="fileInput" accept="image/png, image/jpeg">
-    </label>
+    <p class="description" style="color: red;">*Make sure to place blocks on bedrock too</p>
+    <p class="description" style="color: white;">Click "Toggle Minecraft Blocks" or click M to toggle between Pixel Art and Minecraft Blocks</p>
+
+    <div class="button-container">
+        <label class="custom-file-input">
+            Upload File
+            <input type="file" id="fileInput" accept="image/png, image/jpeg">
+        </label>
+        <button id="toggleButton">Toggle Minecraft Blocks</button>
+    </div>
 
     <div id="canvas-container">
         <canvas id="pixelCanvas" width="664" height="664"></canvas>
     </div>
-
-    <button id="toggleButton">Toggle Minecraft Blocks</button>
 
     <div id="cursorBlockInfo">
         <p id="cursorBlockName"></p>
@@ -434,6 +451,14 @@
         //Ensure cursor box is on screen when scrolling
         window.addEventListener('scroll', function() {
            //The box already follows the cursor, so no extra code is needed to follow the scrolling
+        });
+
+        // Keyboard event listener for toggling with 'M' key
+        document.addEventListener('keydown', function(event) {
+            if (event.key.toUpperCase() === 'M') {
+                const toggleButton = document.getElementById('toggleButton');
+                toggleButton.click(); // Trigger the toggle button click
+            }
         });
 
     </script>
